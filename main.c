@@ -29,7 +29,10 @@ typedef struct {
     int numinputs;
     int numlayers;
     int* layer_sizes;
-    double* lastinputs;
+    double* backpropc1;
+    double* backpropc2;
+    
+    double* inputs;
     double** layers;
     double** invsigmoid;
     double** weights;
@@ -41,7 +44,7 @@ NeuralNet makeNeuralNet(int numhiddenlayers,int numinputs,int* layersizes) {
     target.numlayers    = numhiddenlayers+1;
     target.layer_sizes  = layersizes;
     target.numinputs    = numinputs;
-    target.lastinputs   = 0;
+    target.inputs       = malloc(sizeof(double)*numinputs);
     target.layers       = malloc(sizeof(double*)*target.numlayers);
     target.invsigmoid   = malloc(sizeof(double*)*target.numlayers);
     target.weights      = malloc(sizeof(double*)*target.numlayers);
@@ -57,6 +60,15 @@ NeuralNet makeNeuralNet(int numhiddenlayers,int numinputs,int* layersizes) {
         }
         lastlayer=layersizes[layer];
     }
+    int maxlayersize=0;
+    for (int layer=0;layer<target.numlayers-1;layer++) {
+        if (layersizes[layer]>maxlayersize) {
+            maxlayersize=layersizes[layer];
+        }
+    }
+//    printf("%d\n",maxlayersize);
+    target.backpropc1 = malloc(sizeof(double)*maxlayersize);
+    target.backpropc2 = malloc(sizeof(double)*maxlayersize);
     return target;
 }
 void representweights(NeuralNet* target) {
@@ -107,22 +119,18 @@ void cleanup(NeuralNet* target) {
         free(target->weights[layer]);
         free(target->deltaweights[layer]);
     }
+    free(target->backpropc1);
+    free(target->backpropc2);
     free(target->layers);
     free(target->weights);
     free(target->invsigmoid);
     free(target->layer_sizes);
     free(target->deltaweights);
-    if (target->lastinputs!=0) {
-        free(target->lastinputs);
-    }
+    free(target->inputs);
 }
-double* propogate(NeuralNet* target,double* inputs) {
+double* propogate(NeuralNet* target) {
     int xsize = target->numinputs;
-    if (target->lastinputs!=0) {
-        free(target->lastinputs);
-    }
-    target->lastinputs = inputs;
-    double* prevdataset = inputs;
+    double* prevdataset = target->inputs;
     
     for (int layer=0;layer<target->numlayers;layer++) {
         for (int y=0;y<target->layer_sizes[layer];y++) {
@@ -151,8 +159,11 @@ void backpropogate(NeuralNet* target,double* goals) {
     for (int goal=0;goal<target->layer_sizes[target->numlayers-1];goal++) {
         double diff = goals[goal]-target->layers[target->numlayers-1][goal];
 //        printf("%f is the difference \n",diff);
-        double* incoming = malloc(sizeof(double));
-        *incoming = target->invsigmoid[target->numlayers-1][goal];
+
+
+//        double* incoming = target->backpropc1;
+//        double* incoming = malloc(sizeof(double));
+        target->backpropc1[0] = target->invsigmoid[target->numlayers-1][goal];
         int incominglen=1;
         
         for (int layer=target->numlayers-1;layer>=0;layer--) {
@@ -160,7 +171,7 @@ void backpropogate(NeuralNet* target,double* goals) {
             double* prevlist;
             if (layer==0) {
                 prevlen=target->numinputs;
-                prevlist=target->lastinputs;
+                prevlist=target->inputs;
             } else {
                 prevlen=target->layer_sizes[layer-1];
                 prevlist=target->layers[layer-1];
@@ -168,27 +179,31 @@ void backpropogate(NeuralNet* target,double* goals) {
             
             for (int x=0;x<prevlen;x++) {
                 for (int y=0;y<incominglen;y++) {
-                    target->deltaweights[layer][x+prevlen*y]+=prevlist[x]*incoming[y]*diff;
+                    target->deltaweights[layer][x+prevlen*y]+=prevlist[x]*target->backpropc1[y]*diff;
                 }
             }
             if (layer!=0) {
-                double* nextcoming = malloc(sizeof(double)*prevlen);
+//                double* nextcoming = malloc(sizeof(double)*prevlen);
+                double* nextcoming = target->backpropc2;
                 for (int x=0;x<prevlen;x++) {
                     double sum=0.0;
                     for (int y=0;y<incominglen;y++) {
-                        sum+=target->weights[layer][x+prevlen*y]*incoming[y];
+                        sum+=target->weights[layer][x+prevlen*y]*target->backpropc1[y];
                     }
                     nextcoming[x]=sum;
                 }
-                free(incoming);
-                incoming=nextcoming;
+//                free(incoming);
+//                incoming=nextcoming;
+                target->backpropc2 = target->backpropc1;
+                target->backpropc1 = nextcoming;
+                
                 incominglen=prevlen;
                 for (int x=0;x<incominglen;x++) {
-                    incoming[x]*=target->invsigmoid[layer-1][x];
+                    target->backpropc1[x]*=target->invsigmoid[layer-1][x];
                 }
             }
         }
-        free(incoming);
+//        free(incoming);
     }
     int prevlen1=target->numinputs;
     for (int layer=0;layer<target->numlayers;layer++) {
@@ -237,12 +252,11 @@ int main(int argc, const char * argv[]) {
         double totalerror=0.0;
         for (int x=0;x<2;x++) {
             for (int y=0;y<2;y++) {
-                double* inputs = malloc(sizeof(double)*2);
-                inputs[0]=(double)x;
-                inputs[1]=(double)y;
+                myfamily.inputs[0]=(double)x;
+                myfamily.inputs[1]=(double)y;
                 double result;
-                result = *propogate(&myfamily,inputs);
-                double goal=(double)(x^y);
+                result = *propogate(&myfamily);
+                double goal=(double)!x;
                 if (fabs(result-goal)>.01) {
                     shouldnotbreak=1;
                 }
@@ -251,8 +265,8 @@ int main(int argc, const char * argv[]) {
             }
         }
         totalerror/=4.0;
-        if (epoch%1000==0) {
-            printf("epoch %d avg error %f delta avg error %f\n",epoch,totalerror,totalerror-lasterror);
+        if (epoch%10000==0) {
+            printf("round %d avg error %f delta avg error %f\n",epoch,totalerror,totalerror-lasterror);
         }
         lasterror=totalerror;
         epoch++;
@@ -262,12 +276,11 @@ int main(int argc, const char * argv[]) {
     
     for (int x=0;x<2;x++) {
         for (int y=0;y<2;y++) {
-            double* inputs = malloc(sizeof(double)*2);
-            inputs[0]=(double)x;
-            inputs[1]=(double)y;
+            myfamily.inputs[0]=(double)x;
+            myfamily.inputs[1]=(double)y;
             double result;
-            result = *propogate(&myfamily,inputs);
-            printf("INPUTS: %f, %f.  OUTPUT: %f\n",inputs[0],inputs[1],result);
+            result = *propogate(&myfamily);
+            printf("INPUTS: %f, %f.  OUTPUT: %f\n",myfamily.inputs[0],myfamily.inputs[1],result);
         }
     }
     

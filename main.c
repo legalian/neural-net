@@ -11,9 +11,10 @@
 #include <math.h>
 #include <setjmp.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+
 #include "stb_image.pch"
 
-#define STB_IMAGE_IMPLEMENTATION
 
 static jmp_buf JMPBUF;
 

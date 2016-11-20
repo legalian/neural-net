@@ -11,17 +11,16 @@
 #include <math.h>
 #include <setjmp.h>
 
-static jmp_buf JMPBUF;
+#include "stb_image.pch"
 
 #define STB_IMAGE_IMPLEMENTATION
 
-#include "stb_image.pch"
+static jmp_buf JMPBUF;
 
 
 void custom_assert(int condition,const char* errormessage) {
     if (!condition) {
         printf("%s\n",errormessage);
-    
         setjmp(JMPBUF);
     }
 }
@@ -32,11 +31,13 @@ double rrand() {
 //    static double inc=0;
 //    return (inc++)/8;
 }
+
 double sigmoid(double x) {
-//    return 
+//    return
     return 1/(1+pow(M_E,-x));
 //    return x;
 }
+
 double sigmoidinv(double x) {
     return pow(M_E,-x)/pow((1+pow(M_E,-x)),2);
 //    return 1;
@@ -47,7 +48,7 @@ typedef struct {
     int numinputs;
     int numlayers;
     int* layer_sizes;
-    
+
     double* inputs;
     double** layers;
     double** invsigmoid;
@@ -75,6 +76,7 @@ NeuralNet makeNeuralNet(int numhiddenlayers,int numinputs,int* layersizes) {
     }
     return target;
 }
+
 void representweights(NeuralNet* target) {
     int prevlen=target->numinputs;
     for (int layer=0;layer<target->numlayers;layer++) {
@@ -90,6 +92,7 @@ void representweights(NeuralNet* target) {
     }
     printf("=========\n");
 }
+
 void representnodes(NeuralNet* target) {
     printf("=========\n");
     for (int layer=0;layer<target->numlayers;layer++) {
@@ -101,6 +104,7 @@ void representnodes(NeuralNet* target) {
     }
     printf("=========\n");
 }
+
 void cleanup_neuralnet(NeuralNet* target) {
     for (int layer=0;layer<target->numlayers;layer++) {
         free(target->layers[layer]);
@@ -113,10 +117,11 @@ void cleanup_neuralnet(NeuralNet* target) {
     free(target->layer_sizes);
     free(target->inputs);
 }
+
 double* propogate(NeuralNet* target) {
     int xsize = target->numinputs;
     double* prevdataset = target->inputs;
-    
+
     for (int layer=0;layer<target->numlayers;layer++) {
         for (int y=0;y<target->layer_sizes[layer];y++) {
             double sum=0.0;
@@ -131,6 +136,7 @@ double* propogate(NeuralNet* target) {
     }
     return target->layers[target->numlayers-1];
 }
+
 void backpropogate(NeuralNet* target,double* goals) {
     double* carriage=target->layers[target->numlayers-1];
     for (int goal=0;goal<target->layer_sizes[target->numlayers-1];goal++) {
@@ -173,13 +179,14 @@ void basic_example() {
     int* hidden_layer_sizes = malloc(sizeof(int)*(numhiddenlayers+1));
     hidden_layer_sizes[0]=3;
     hidden_layer_sizes[numhiddenlayers]=numoutputs;
-    
+
     NeuralNet myfamily = makeNeuralNet(numhiddenlayers, numinputs, hidden_layer_sizes);
     myfamily.learning_rate = .8;
-    
+
     int epoch=0;
     int shouldnotbreak=1;
     double lasterror=0.0;
+
     while (shouldnotbreak) {
         shouldnotbreak=0;
         double totalerror=0.0;
@@ -190,23 +197,20 @@ void basic_example() {
                 double result;
                 result = *propogate(&myfamily);
                 double goal=(double)(x^y);
-                if (fabs(result-goal)>.01) {
+                if (fabs(result-goal)>.01)
                     shouldnotbreak=1;
-                }
                 backpropogate(&myfamily, &goal);
                 totalerror+=fabs(result-goal);
             }
         }
         totalerror/=4.0;
-        if (epoch%100000==0) {
+        if (epoch%100000==0)
             printf("round %d avg error %f delta avg error %f\n",epoch,totalerror,totalerror-lasterror);
-        }
         lasterror=totalerror;
         epoch++;
     }
     printf("DONE\n");
-    
-    
+
     for (int x=0;x<2;x++) {
         for (int y=0;y<2;y++) {
             myfamily.inputs[0]=(double)x;
@@ -216,7 +220,7 @@ void basic_example() {
             printf("INPUTS: %f, %f.  OUTPUT: %f\n",myfamily.inputs[0],myfamily.inputs[1],result);
         }
     }
-    
+
     cleanup_neuralnet(&myfamily);
 }
 
@@ -236,10 +240,10 @@ Image load_image(const char* filename) {
     custom_assert(k==3, "image in wrong format: incorrect number of channels.");
     return result;
 }
+
 void cleanup_image(Image* image) {
-    if (image!=0) {
+    if (image!=0)
         stbi_image_free(image->data);
-    }
 }
 
 typedef struct {
@@ -271,9 +275,8 @@ ConvNeuralNet makeConvNeuralNet(int parallels,int layer_pattern,int layers,int i
     int width      = kradius*2+1;
     int convlayers = 0;
     for (int layer=0;layer<layers;layer++) {
-        if (!(layer_pattern&(1<<layer))) {
+        if (!(layer_pattern&(1<<layer)))
             convlayers++;
-        }
     }
     inputsize-=kradius<<1;
     construct.layerbuffers        = malloc(sizeof(double*)*(layers-1));
@@ -308,9 +311,8 @@ ConvNeuralNet makeConvNeuralNet(int parallels,int layer_pattern,int layers,int i
             custom_assert(inputsize>0,"convolutional layer must have input layer at least the size of the kradius");
             convlayer++;
         }
-        if (layer!=layers-1) {
+        if (layer!=layers-1)
             construct.layerbuffers[layer]=malloc(sizeof(double)*inputsize*inputsize*parallels);
-        }
         layer_pattern = layer_pattern>>1;
     }
     construct.outputsize=inputsize;
@@ -318,16 +320,16 @@ ConvNeuralNet makeConvNeuralNet(int parallels,int layer_pattern,int layers,int i
     construct.fully_connected_layer = makeNeuralNet(fclayers,inputsize*inputsize*parallels,fclayersizes);
     return construct;
 }
+
 void cleanup_convneuralnet(ConvNeuralNet* target) {
     cleanup_image(target->input);
     int convlayer=0;
     for (int layer=0;layer<target->layers;layer++) {
-        if ((target->layer_pattern&(1<<layer))==0) {
+        if ((target->layer_pattern&(1<<layer))==0)
             free(target->kernel_conv_weights[convlayer++]);
-        }
         free(target->layerbuffers[layer]);
     }
-    
+
     free(target->kernel_conv_weights);
     free(target->deltabuffer);
     free(target->layerbuffers);
@@ -394,11 +396,10 @@ double* propogate_conv(ConvNeuralNet* target) {
                                 sum += prevbuf[para*width*width+(x+x2)*width+y+y2]*target->kernel_conv_weights[convlayer][para*kwidth*kwidth+x2*kwidth+y2];
                             }
                         }
-                        if (layer!=target->layers-1) {
+                        if (layer!=target->layers-1)
                             target->layerbuffers[layer][para*inputsize*inputsize+x*inputsize+y]=sum;
-                        } else {
+                        else
                             target->fully_connected_layer.inputs[para*inputsize*inputsize+x*inputsize+y]=sum;
-                        }
                     }
                 }
                 convlayer++;
@@ -408,25 +409,23 @@ double* propogate_conv(ConvNeuralNet* target) {
     }
     return propogate(&target->fully_connected_layer);
 }
+
 void backpropogate_conv(ConvNeuralNet* target,double* goals) {
     int convlayer=-1;
     for (int layer=0;layer<target->layers;layer++) {
-        if ((target->layer_pattern&(1<<layer))==0) {
+        if ((target->layer_pattern&(1<<layer))==0)
             convlayer++;
-        }
     }
     backpropogate(&target->fully_connected_layer,goals);
     double* carriage = target->fully_connected_layer.inputs;
     double* destination;
     int revinputsize=target->outputsize;
-    
     int kwidth=target->kradius*2+1;
     for (int layer=target->layers-1;layer>=0;layer--) {
-        if (layer==0) {
+        if (layer==0)
             destination = target->sourcebuffer;
-        } else {
+        else
             destination = target->layerbuffers[layer-1];
-        }
         if (target->layer_pattern&(1<<layer)) {
             int width=revinputsize;
             revinputsize=revinputsize<<1;
@@ -466,7 +465,6 @@ void backpropogate_conv(ConvNeuralNet* target,double* goals) {
                                 destination[para*revinputsize*revinputsize+(x+x2)*revinputsize+y+y2]*carriage[para*width*width+x*width+y];
                             }
                         }
-                        
                     }
                 }
                 for (int x=0;x<revinputsize;x++) {
@@ -500,11 +498,9 @@ void backpropogate_conv(ConvNeuralNet* target,double* goals) {
         int inputsize=target->inputsize;
         inputsize-=target->kradius<<1;
         for (int chan=0;chan<3;chan++) {
-        
             for (int x=0;x<inputsize;x++) {
                 for (int y=0;y<inputsize;y++) {
                     double spixel = target->sourcebuffer[para*inputsize*inputsize+x*inputsize+y];
-                
                     for (int x2=0;x2<kwidth;x2++) {
                         for (int y2=0;y2<kwidth;y2++) {
                             if ((x+x2)<target->input->x&&(y+y2)<target->input->y) {
@@ -515,7 +511,6 @@ void backpropogate_conv(ConvNeuralNet* target,double* goals) {
                             }
                         }
                     }
-                    
                 }
             }
             for (int x2=0;x2<kwidth;x2++) {
@@ -529,6 +524,7 @@ void backpropogate_conv(ConvNeuralNet* target,double* goals) {
         }
     }
 }
+
 void convolutional_example() {
     Image* foximages = malloc(sizeof(Image)*248);
     int foximagenumber=0;
@@ -536,9 +532,8 @@ void convolutional_example() {
         char converted[100];
         sprintf(converted, "/Users/legalian/dev/NeuralNet/NeuralNet/redfox_trainingdata/pic_%03d.jpg", foxim);
         Image im = load_image(converted);
-        if (im.x<=300&&im.y<=300) {
+        if (im.x<=300&&im.y<=300)
             foximages[foximagenumber++]=im;
-        }
     }
     Image* notfoximages = malloc(sizeof(Image)*193);
     int notfoximagenumber=0;
@@ -546,9 +541,8 @@ void convolutional_example() {
         char converted[100];
         sprintf(converted, "/Users/legalian/dev/NeuralNet/NeuralNet/animal_notfox_trainingdata/pic_%03d.jpg", foxim);
         Image im = load_image(converted);
-        if (im.x<=300&&im.y<=300) {
+        if (im.x<=300&&im.y<=300)
             notfoximages[notfoximagenumber++]=im;
-        }
     }
     int numhiddenlayers = 1;
     int numoutputs = 1;
@@ -569,10 +563,8 @@ void convolutional_example() {
     (1<<9)//5
     ,10,300,5,numhiddenlayers,hidden_layer_sizes,2);
     myfamily.fully_connected_layer.learning_rate = 1;
-    
-    
-//        printf("%f\n",*propogate_conv(&myfamily));
 
+//        printf("%f\n",*propogate_conv(&myfamily));
 
 //        int epoch=0;
     int foxestested=0;
@@ -604,17 +596,10 @@ void convolutional_example() {
     cleanup_convneuralnet(&myfamily);
 }
 
-
 int main(int argc, const char * argv[]) {
-    if (setjmp(JMPBUF)) {
+    if (setjmp(JMPBUF))
         return 1;
-    } else {
-        
+    else
         basic_example();
-        
-    }
     return 0;
 }
-
-
-
